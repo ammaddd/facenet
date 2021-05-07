@@ -596,7 +596,7 @@ def parse_arguments(argv):
         help='Concatenates embeddings for the image and its horizontally flipped counterpart.', action='store_true')
     parser.add_argument('--lfw_subtract_mean', 
         help='Subtract feature mean before calculating distance.', action='store_true')
-    parser.add_argument('--comet', type=boolean_string, default=False,
+    parser.add_argument('--comet', type=bool, default=False,
         help='enable comet logging or not')
     return parser.parse_args(argv)
   
