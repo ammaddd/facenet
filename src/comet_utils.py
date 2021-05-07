@@ -66,7 +66,7 @@ class CometLogger:
             step: Optional. Used as the X axis when plotting on comet.ml
             epoch:  Optional. Used as the X axis when plotting on comet.ml
         """
-        self._experiment.log_metrics(self, dic, prefix, step, epoch)
+        self._experiment.log_metrics(dic, prefix, step, epoch)
 
     @_requiresComet
     def log_metric(self, name, value, step=None, epoch=None,
