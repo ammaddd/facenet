@@ -26,7 +26,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from comet_ml import Experiment
+from comet_utils import CometLogger
 from datetime import datetime
 import os.path
 import time
@@ -46,8 +46,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 
 def main(args):
-    experiment = Experiment(auto_metric_logging=False)
-    experiment.log_others(vars(args))
+    comet_logger = CometLogger(args.comet, auto_metric_logging=False)
+    comet_logger.log_others(vars(args))
 
     network = importlib.import_module(args.model_def)
     image_size = (args.image_size, args.image_size)
@@ -235,7 +235,7 @@ def main(args):
                     total_loss, train_op, summary_op, summary_writer, regularization_losses, args.learning_rate_schedule_file,
                     stat, cross_entropy_mean, accuracy, learning_rate,
                     prelogits, prelogits_center_loss, args.random_rotate, args.random_crop, args.random_flip, prelogits_norm, args.prelogits_hist_max, args.use_fixed_image_standardization,
-                    experiment)
+                    comet_logger)
                 stat['time_train'][epoch-1] = time.time() - t
                 
                 if not cont:
@@ -246,18 +246,18 @@ def main(args):
                     validate(args, sess, epoch, val_image_list, val_label_list, enqueue_op, image_paths_placeholder, labels_placeholder, control_placeholder,
                         phase_train_placeholder, batch_size_placeholder, 
                         stat, total_loss, regularization_losses, cross_entropy_mean, accuracy, args.validate_every_n_epochs, args.use_fixed_image_standardization,
-                        experiment)
+                        comet_logger)
                 stat['time_validate'][epoch-1] = time.time() - t
 
                 # Save variables and the metagraph if it doesn't exist already
-                save_variables_and_metagraph(sess, saver, summary_writer, model_dir, subdir, epoch, experiment)
+                save_variables_and_metagraph(sess, saver, summary_writer, model_dir, subdir, epoch, comet_logger)
 
                 # Evaluate on LFW
                 t = time.time()
                 if args.lfw_dir:
                     evaluate(sess, enqueue_op, image_paths_placeholder, labels_placeholder, phase_train_placeholder, batch_size_placeholder, control_placeholder, 
                         embeddings, label_batch, lfw_paths, actual_issame, args.lfw_batch_size, args.lfw_nrof_folds, log_dir, step, summary_writer, stat, epoch, 
-                        args.lfw_distance_metric, args.lfw_subtract_mean, args.lfw_use_flipped_images, args.use_fixed_image_standardization, experiment)
+                        args.lfw_distance_metric, args.lfw_subtract_mean, args.lfw_use_flipped_images, args.use_fixed_image_standardization, comet_logger)
                 stat['time_evaluate'][epoch-1] = time.time() - t
 
                 print('Saving statistics')
@@ -303,7 +303,7 @@ def train(args, sess, epoch, image_list, label_list, index_dequeue_op, enqueue_o
       loss, train_op, summary_op, summary_writer, reg_losses, learning_rate_schedule_file, 
       stat, cross_entropy_mean, accuracy, 
       learning_rate, prelogits, prelogits_center_loss, random_rotate, random_crop, random_flip, prelogits_norm, prelogits_hist_max, use_fixed_image_standardization,
-      experiment):
+      comet_logger):
     batch_number = 0
     
     if args.learning_rate>0.0:
@@ -351,8 +351,8 @@ def train(args, sess, epoch, image_list, label_list, index_dequeue_op, enqueue_o
         list_ = ['loss','center_loss','reg_loss','xent_loss',
                  'prelogits_norm','accuracy']
         dict_log = {k: stat[k][step_-1] for k in list_}
-        experiment.log_metrics(dict_log, step=step_-1, epoch=epoch-1)
-        experiment.log_metric("learning_rate", lr_, epoch=epoch-1)
+        comet_logger.log_metrics(dict_log, step=step_-1, epoch=epoch-1)
+        comet_logger.log_metric("learning_rate", lr_, epoch=epoch-1)
         
         duration = time.time() - start_time
         print('Epoch: [%d][%d/%d]\tTime %.3f\tLoss %2.3f\tXent %2.3f\tRegLoss %2.3f\tAccuracy %2.3f\tLr %2.5f\tCl %2.3f' %
@@ -369,7 +369,7 @@ def train(args, sess, epoch, image_list, label_list, index_dequeue_op, enqueue_o
 def validate(args, sess, epoch, image_list, label_list, enqueue_op, image_paths_placeholder, labels_placeholder, control_placeholder,
              phase_train_placeholder, batch_size_placeholder, 
              stat, loss, regularization_losses, cross_entropy_mean, accuracy, validate_every_n_epochs, use_fixed_image_standardization,
-             experiment):
+             comet_logger):
   
     print('Running forward pass on validation set')
 
@@ -406,7 +406,7 @@ def validate(args, sess, epoch, image_list, label_list, enqueue_op, image_paths_
 
     list_ = ['val_loss','val_xent_loss','val_accuracy']
     dict_log = {k: stat[k][val_index] for k in list_}
-    experiment.log_metrics(dict_log, step=val_index, epoch=epoch-1)
+    comet_logger.log_metrics(dict_log, step=val_index, epoch=epoch-1)
 
     print('Validation Epoch: %d\tTime %.3f\tLoss %2.3f\tXent %2.3f\tAccuracy %2.3f' %
           (epoch, duration, np.mean(loss_array), np.mean(xent_array), np.mean(accuracy_array)))
@@ -414,7 +414,7 @@ def validate(args, sess, epoch, image_list, label_list, enqueue_op, image_paths_
 
 def evaluate(sess, enqueue_op, image_paths_placeholder, labels_placeholder, phase_train_placeholder, batch_size_placeholder, control_placeholder, 
         embeddings, labels, image_paths, actual_issame, batch_size, nrof_folds, log_dir, step, summary_writer, stat, epoch, distance_metric, subtract_mean, use_flipped_images, use_fixed_image_standardization,
-        experiment):
+        comet_logger):
     start_time = time.time()
     # Run forward pass to calculate embeddings
     print('Runnning forward pass on LFW images')
@@ -472,10 +472,10 @@ def evaluate(sess, enqueue_op, image_paths_placeholder, labels_placeholder, phas
         f.write('%d\t%.5f\t%.5f\n' % (step, np.mean(accuracy), val))
     stat['lfw_accuracy'][epoch-1] = np.mean(accuracy)
     stat['lfw_valrate'][epoch-1] = val
-    experiment.log_metric("lfw_accuracy", np.mean(accuracy), epoch=epoch-1)
-    experiment.log_metric("lfw_valrate", val, epoch=epoch-1)
+    comet_logger.log_metric("lfw_accuracy", np.mean(accuracy), epoch=epoch-1)
+    comet_logger.log_metric("lfw_valrate", val, epoch=epoch-1)
 
-def save_variables_and_metagraph(sess, saver, summary_writer, model_dir, model_name, step, experiment):
+def save_variables_and_metagraph(sess, saver, summary_writer, model_dir, model_name, step, comet_logger):
     # Save the model checkpoint
     print('Saving variables')
     start_time = time.time()
@@ -496,8 +496,8 @@ def save_variables_and_metagraph(sess, saver, summary_writer, model_dir, model_n
     summary.value.add(tag='time/save_variables', simple_value=save_time_variables)
     summary.value.add(tag='time/save_metagraph', simple_value=save_time_metagraph)
     summary_writer.add_summary(summary, step)
-    experiment.log_model("facenet", checkpoint_path)
-    experiment.log_model("facenet", metagraph_filename)
+    comet_logger.log_model("facenet", checkpoint_path)
+    comet_logger.log_model("facenet", metagraph_filename)
   
 
 def parse_arguments(argv):
@@ -596,6 +596,8 @@ def parse_arguments(argv):
         help='Concatenates embeddings for the image and its horizontally flipped counterpart.', action='store_true')
     parser.add_argument('--lfw_subtract_mean', 
         help='Subtract feature mean before calculating distance.', action='store_true')
+    parser.add_argument('--comet', type=boolean_string, default=False,
+        help='enable comet logging or not')
     return parser.parse_args(argv)
   
 
